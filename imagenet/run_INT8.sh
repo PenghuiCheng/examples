@@ -1,7 +1,7 @@
 num_cores=28
 num_threads=28
 model=resnet50
-batch_sizes="16"
+batch_sizes="32"
 use_mkldnn=--mkldnn
 pretrained=--pretrained
 # qengine="all"
@@ -26,9 +26,8 @@ workers=0
 # export MKLDNN_VERBOSE=1
 
 # export LD_PRELOAD=/opt/intel/compilers_and_libraries_2018.1.163/linux/compiler/lib/intel64_lin/libiomp5.so
-if [ $INT8 != 'no_INT8']
+if [ $INT8 != 'no_INT8' ]; then
     echo "INT8=$INT8"
-    then
     declare -A dict
     dict=([resnet18]='resnet18-5c106cde.pth'
         [resnet34]='resnet34-333f7ec4.pth'
@@ -58,7 +57,7 @@ do
 echo $i "instance"
 startid=$(($i*$num_threads))
 endid=$(($i*$num_threads+$num_threads-1))
-export OMP_SCHEDULE=STATIC OMP_NUM_THREADS=$num_threads OMP_DISPLAY_ENV=TRUE OMP_PROC_BIND=TRUE GOMP_CPU_AFFINITY="$startid-$endid"  
+export OMP_SCHEDULE=STATIC OMP_DISPLAY_ENV=TRUE OMP_PROC_BIND=TRUE GOMP_CPU_AFFINITY="$startid-$endid"  
 export OMP_NUM_THREADS=$num_threads  KMP_AFFINITY=proclist=[$startid-$endid],granularity=fine,explicit
 python -u main.py $pretrained $evaluation $reduce_range $profiling $use_mkldnn -j $workers -a $model -b $batch_sizes --INT8 $INT8 -qs $qscheme --iter-calib $iter_calib -w $warmup -qe $qengine  -i $iterations $image_path &
 done
