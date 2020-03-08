@@ -21,6 +21,7 @@ batch_sizes="32"
 # use_mkldnn=--mkldnn
 # pretrained=--pretrained
 evaluation=-e
+performance_only=--performance
 image_path=/lustre/dataset/imagenet/img_raw/
 iterations=50
 warmup=5
@@ -40,7 +41,7 @@ startid=$(($i*$num_threads))
 endid=$(($i*$num_threads+$num_threads-1))
 export OMP_SCHEDULE=STATIC OMP_DISPLAY_ENV=TRUE OMP_PROC_BIND=TRUE GOMP_CPU_AFFINITY="$startid-$endid"  
 export OMP_NUM_THREADS=$num_threads  KMP_AFFINITY=proclist=[$startid-$endid],granularity=fine,explicit
-python -u main.py $pretrained $evaluation $profiling $use_mkldnn -j $workers -a $model -b $batch_sizes -w $warmup -i $iterations $image_path &
+python -u main.py $performance_only $pretrained $evaluation $profiling $use_mkldnn -j $workers -a $model -b $batch_sizes -w $warmup -i $iterations $image_path &
 done
 # wait
 # done

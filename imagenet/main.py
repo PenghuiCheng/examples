@@ -34,7 +34,7 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                         ' (default: resnet18)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=90, type=int, metavar='N',
+parser.add_argument('--epochs', default=1, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -99,6 +99,8 @@ parser.add_argument("-qs", "--qscheme", type=str, default="perTensor",
                     help="The scheme of quantizer:\"perTensor\", \"perChannel\"")
 parser.add_argument("-r", "--reduce_range", action='store_true',
                     help="Choose reduce range flag. True or False.")
+parser.add_argument("--performance", action='store_true',
+                    help="measure performance only.")
 
 best_acc1 = 0
 
@@ -391,20 +393,21 @@ def main_worker(gpu, ngpus_per_node, args):
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
+        if not args.performance:
+            acc1 = validate(val_loader, model, criterion, args)
 
-        # remember best acc@1 and save checkpoint
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
-
-        if args.rank == 0:
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best)
+            # remember best acc@1 and save checkpoint
+            is_best = acc1 > best_acc1
+            best_acc1 = max(acc1, best_acc1)
+    
+            if args.rank == 0:
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    'arch': args.arch,
+                    'state_dict': model.state_dict(),
+                    'best_acc1': best_acc1,
+                    'optimizer' : optimizer.state_dict(),
+                }, is_best)
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -423,8 +426,11 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
+        if args.iterations > 0 and i >= (args.warmup_iterations + args.iterations):
+            break
         # measure data loading time
-        data_time.update(time.time() - end)
+        if i >= args.warmup_iterations:
+            data_time.update(time.time() - end)
 
         if args.gpu is not None and args.cuda:
             images = images.cuda(args.gpu, non_blocking=True)
@@ -459,13 +465,19 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         optimizer.step()
 
         # measure elapsed time
-        batch_time.update(time.time() - end)
+        if i >= args.warmup_iterations:
+            batch_time.update(time.time() - end)
         end = time.time()
 
         if i % args.print_freq == 0:
             progress.display(i)
-        #if i==20:
-        #    return
+    if args.performance:
+        batch_size = train_loader.batch_size
+        latency = batch_time.avg / batch_size * 1000
+        perf = batch_size/batch_time.avg
+        print('training latency %3.0f ms on %d epoch'%(latency, epoch))
+        print('training performance %3.0f fps on %d epoch'%(perf, epoch))
+
 
 def validate(val_loader, model, criterion, args, is_INT8=False, is_calibration=False):
     if is_calibration:
@@ -491,7 +503,7 @@ def validate(val_loader, model, criterion, args, is_INT8=False, is_calibration=F
 
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
-            if iterations == 0 or i < iterations + warmup:
+            if not args.evaluate or iterations == 0 or i < iterations + warmup:
                 if i >= warmup:
                     end = time.time()
                 if not is_INT8:
@@ -535,13 +547,14 @@ def validate(val_loader, model, criterion, args, is_INT8=False, is_calibration=F
             print(prof.key_averages().table(sort_by="cpu_time_total")) 
 
         # TODO: this should also be done with the ProgressMeter
-        batch_size = val_loader.batch_size
-        latency = batch_time.sum / (i - warmup) / batch_size * 1000
-        perf = (i - warmup) * batch_size/batch_time.sum
-        print('latency %3.0f ms'%latency)
-        print('performance %3.0f fps'%perf)
-        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-              .format(top1=top1, top5=top5))
+        if args.evaluate:
+            batch_size = val_loader.batch_size
+            latency = batch_time.avg / batch_size * 1000
+            perf = batch_size/batch_time.avg
+            print('inference latency %3.0f ms'%latency)
+            print('inference performance %3.0f fps'%perf)
+            print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+                  .format(top1=top1, top5=top5))
 
     return top1.avg
 
