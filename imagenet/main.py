@@ -19,6 +19,10 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils import mkldnn as mkldnn_utils
 import models as m
+from models.mobilenet_v2.mobilenet_v2_model import mobilenet_v2
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -100,7 +104,7 @@ parser.add_argument("-qs", "--qscheme", type=str, default="perTensor",
 parser.add_argument("-r", "--reduce_range", action='store_true',
                     help="Choose reduce range flag. True or False.")
 parser.add_argument("--performance", action='store_true',
-                    help="measure performance only.")
+                    help="measure performance only, no accuracy.")
 
 best_acc1 = 0
 
@@ -303,10 +307,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # create model
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
-        model = models.__dict__[args.arch](pretrained=True)
-    else:
-        print("=> creating model '{}'".format(args.arch))
-        model = models.__dict__[args.arch]()
+    model = build_model(args.arch, args.pretrained, args.mkldnn)
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -399,7 +400,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # remember best acc@1 and save checkpoint
             is_best = acc1 > best_acc1
             best_acc1 = max(acc1, best_acc1)
-    
+
             if args.rank == 0:
                 save_checkpoint({
                     'epoch': epoch + 1,
@@ -408,6 +409,13 @@ def main_worker(gpu, ngpus_per_node, args):
                     'best_acc1': best_acc1,
                     'optimizer' : optimizer.state_dict(),
                 }, is_best)
+
+
+def build_model(arch, pretrained=False, use_mkldnn=False):
+    if arch == "MobileNetV2" or arch == "mobilenet_v2":
+        return mobilenet_v2(pretrained)
+    else:
+        models.__dict__[arch](pretrained=pretrained)
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):

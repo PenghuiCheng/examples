@@ -17,18 +17,18 @@ num_threads=$CORES
 # echo -e "### using KMP_BLOCKTIME=$KMP_BLOCKTIME\n"
 
 model=mobilenet_v2
-batch_sizes="32"
-# use_mkldnn=--mkldnn
-# pretrained=--pretrained
+batch_sizes="128"
+use_mkldnn=--mkldnn
+pretrained=--pretrained
 evaluation=-e
 performance_only=--performance
 image_path=/lustre/dataset/imagenet/img_raw/
-iterations=50
-warmup=5
+iterations=100
+warmup=50
 log_level="info"
 # profiling=-t
 profiling=""
-workers=0
+workers=1
 # export GLOG_logtostderr=1; export GLOG_v=1000
 # export MKLDNN_VERBOSE=1
 
